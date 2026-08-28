@@ -100,6 +100,7 @@
 
   .sets-table{ margin-top: 6px; }
   .set-row{ display:grid; grid-template-columns: 34px 1fr 1fr 34px; gap: 8px; align-items:center; margin-bottom: 8px; }
+  .set-row.cardio{ grid-template-columns: 34px 1fr 34px; }
   .set-row .idx{ font-family: var(--mono); color: var(--text-faint); font-size: 13px; text-align:center; }
   .set-row input{ margin-bottom: 0; padding: 9px 10px; font-family: var(--mono); }
   .rm-set{
@@ -213,6 +214,12 @@
   .muted-small{ font-size: 12px; color: var(--text-faint); margin-top: -6px; margin-bottom: 14px; }
 
   ::placeholder{ color: var(--text-faint); }
+
+  textarea{
+    width:100%; background: var(--surface-2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 12.5px;
+    font-family: var(--mono); resize: vertical; line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -329,6 +336,14 @@
       </div>
     </div>
     <div id="manage-list"></div>
+
+    <div class="card">
+      <h2>Importar registros</h2>
+      <div class="muted-small">Pega aquí el JSON con sesiones pasadas y haz clic en Importar. Los ejercicios nuevos se añaden automáticamente a su categoría.</div>
+      <textarea id="import-json" rows="6" placeholder='[{"date":"2026-08-03","category":"Piernas","exercise":"Sentadillas","sets":[{"peso":0,"reps":10}]}]'></textarea>
+      <div style="height:10px;"></div>
+      <button class="btn primary full" id="import-btn" type="button">Importar registros</button>
+    </div>
   </section>
 
 </main>
@@ -513,7 +528,15 @@
 
   function topSet(entry){
     if(!entry.sets || entry.sets.length === 0) return null;
+    if(entry.sets[0].minutes !== undefined){
+      return entry.sets.reduce(function(best, s){ return (!best || s.minutes > best.minutes) ? s : best; }, null);
+    }
     return entry.sets.reduce(function(best, s){ return (!best || s.peso > best.peso) ? s : best; }, null);
+  }
+
+  function setVolume(s){
+    if(s.minutes !== undefined) return 0;
+    return (s.peso || 0) * (s.reps || 0);
   }
 
   function getExerciseSessions(cat, exName){
@@ -607,9 +630,13 @@
     });
   }
 
+  function isCardioCat(cat){ return cat === "Cardio"; }
+
+  function blankSet(cat){ return isCardioCat(cat) ? { minutes: "" } : { peso: "", reps: "" }; }
+
   function selectCategory(cat){
     state.selectedCategory = cat;
-    state.currentSets = [{peso:"", reps:""}];
+    state.currentSets = [blankSet(cat)];
     renderCategoryChips();
     var card = document.getElementById("exercise-card");
     card.style.display = "block";
@@ -649,15 +676,17 @@
 
     var last = sessions[sessions.length - 1];
     var lastTop = topSet(last);
-    var setsTxt = last.sets.map(function(s){ return s.peso + "kg×" + s.reps; }).join(", ");
+    var cardio = isCardioCat(cat);
+    var setsTxt = last.sets.map(function(s){ return cardio ? (s.minutes + " min") : (s.peso + "kg×" + s.reps); }).join(", ");
 
     var trendHtml = "";
     if(sessions.length > 1 && lastTop){
       var prevTop = topSet(sessions[sessions.length - 2]);
       if(prevTop){
-        var diff = lastTop.peso - prevTop.peso;
-        if(diff > 0) trendHtml = ' <span class="trend-up">▲ +' + diff + 'kg vs. anterior</span>';
-        else if(diff < 0) trendHtml = ' <span class="trend-down">▼ ' + diff + 'kg vs. anterior</span>';
+        var diff = cardio ? (lastTop.minutes - prevTop.minutes) : (lastTop.peso - prevTop.peso);
+        var unit = cardio ? "min" : "kg";
+        if(diff > 0) trendHtml = ' <span class="trend-up">▲ +' + diff + unit + ' vs. anterior</span>';
+        else if(diff < 0) trendHtml = ' <span class="trend-down">▼ ' + diff + unit + ' vs. anterior</span>';
       }
     }
 
@@ -686,22 +715,35 @@
   function renderSetsTable(){
     var wrap = document.getElementById("sets-table");
     wrap.innerHTML = "";
+    var cardio = isCardioCat(state.selectedCategory);
     state.currentSets.forEach(function(s, i){
       var row = document.createElement("div");
-      row.className = "set-row";
+      row.className = "set-row" + (cardio ? " cardio" : "");
 
       var idx = document.createElement("div");
       idx.className = "idx"; idx.textContent = (i+1);
 
-      var peso = document.createElement("input");
-      peso.type = "number"; peso.inputMode = "decimal"; peso.placeholder = "Peso (kg)";
-      peso.value = s.peso; peso.min = "0"; peso.step = "0.5";
-      peso.addEventListener("input", function(){ state.currentSets[i].peso = peso.value; });
+      row.appendChild(idx);
 
-      var reps = document.createElement("input");
-      reps.type = "number"; reps.inputMode = "numeric"; reps.placeholder = "Reps";
-      reps.value = s.reps; reps.min = "0"; reps.step = "1";
-      reps.addEventListener("input", function(){ state.currentSets[i].reps = reps.value; });
+      if(cardio){
+        var minutes = document.createElement("input");
+        minutes.type = "number"; minutes.inputMode = "numeric"; minutes.placeholder = "Minutos";
+        minutes.value = s.minutes; minutes.min = "0"; minutes.step = "1";
+        minutes.addEventListener("input", function(){ state.currentSets[i].minutes = minutes.value; });
+        row.appendChild(minutes);
+      } else {
+        var peso = document.createElement("input");
+        peso.type = "number"; peso.inputMode = "decimal"; peso.placeholder = "Peso (kg)";
+        peso.value = s.peso; peso.min = "0"; peso.step = "0.5";
+        peso.addEventListener("input", function(){ state.currentSets[i].peso = peso.value; });
+
+        var reps = document.createElement("input");
+        reps.type = "number"; reps.inputMode = "numeric"; reps.placeholder = "Reps";
+        reps.value = s.reps; reps.min = "0"; reps.step = "1";
+        reps.addEventListener("input", function(){ state.currentSets[i].reps = reps.value; });
+
+        row.appendChild(peso); row.appendChild(reps);
+      }
 
       var rm = document.createElement("button");
       rm.className = "rm-set"; rm.type = "button"; rm.textContent = "×";
@@ -711,7 +753,7 @@
         renderSetsTable();
       });
 
-      row.appendChild(idx); row.appendChild(peso); row.appendChild(reps); row.appendChild(rm);
+      row.appendChild(rm);
       wrap.appendChild(row);
     });
   }
@@ -741,7 +783,7 @@
 
   function initAddSetBtn(){
     document.getElementById("add-set-btn").addEventListener("click", function(){
-      state.currentSets.push({peso:"", reps:""});
+      state.currentSets.push(blankSet(state.selectedCategory));
       renderSetsTable();
     });
   }
@@ -754,12 +796,24 @@
         showToast("Selecciona categoría y ejercicio.");
         return;
       }
-      var sets = state.currentSets
-        .map(function(s){ return { peso: parseFloat(s.peso) || 0, reps: parseInt(s.reps) || 0 }; })
-        .filter(function(s){ return s.reps > 0; });
-      if(sets.length === 0){
-        showToast("Añade al menos una serie con repeticiones.");
-        return;
+      var cardio = isCardioCat(state.selectedCategory);
+      var sets;
+      if(cardio){
+        sets = state.currentSets
+          .map(function(s){ return { minutes: parseInt(s.minutes) || 0 }; })
+          .filter(function(s){ return s.minutes > 0; });
+        if(sets.length === 0){
+          showToast("Añade al menos una serie con minutos.");
+          return;
+        }
+      } else {
+        sets = state.currentSets
+          .map(function(s){ return { peso: parseFloat(s.peso) || 0, reps: parseInt(s.reps) || 0 }; })
+          .filter(function(s){ return s.reps > 0; });
+        if(sets.length === 0){
+          showToast("Añade al menos una serie con repeticiones.");
+          return;
+        }
       }
       state.log.push({
         id: uid(),
@@ -770,7 +824,7 @@
       });
       saveData();
       showToast("Ejercicio guardado ✓");
-      state.currentSets = [{peso:"", reps:""}];
+      state.currentSets = [blankSet(state.selectedCategory)];
       renderSetsTable();
       renderTodayList();
     });
@@ -820,7 +874,7 @@
     entry.sets.forEach(function(s){
       var pill = document.createElement("span");
       pill.className = "set-pill";
-      pill.textContent = s.peso + "kg × " + s.reps;
+      pill.textContent = (s.minutes !== undefined) ? (s.minutes + " min") : (s.peso + "kg × " + s.reps);
       sets.appendChild(pill);
     });
 
@@ -849,7 +903,7 @@
 
     var totalVolume = 0;
     filtered.forEach(function(e){
-      e.sets.forEach(function(s){ totalVolume += s.peso * s.reps; });
+      e.sets.forEach(function(s){ totalVolume += setVolume(s); });
     });
     var dates = {};
     filtered.forEach(function(e){ dates[e.date] = true; });
@@ -877,7 +931,7 @@
       var head = document.createElement("div");
       head.className = "day-head";
       var dayVolume = 0;
-      byDate[date].forEach(function(e){ e.sets.forEach(function(s){ dayVolume += s.peso*s.reps; }); });
+      byDate[date].forEach(function(e){ e.sets.forEach(function(s){ dayVolume += setVolume(s); }); });
 
       var left = document.createElement("div");
       var dEl = document.createElement("div"); dEl.className = "d"; dEl.textContent = fmtDateHuman(date);
@@ -971,17 +1025,25 @@
     emptyBox.style.display = "none";
     content.style.display = "block";
 
+    var cardio = isCardioCat(cat);
     var last = sessions[sessions.length - 1];
     var lastTop = topSet(last);
-    document.getElementById("progress-last").textContent = lastTop ? (lastTop.peso + "kg × " + lastTop.reps) : "—";
+    if(!lastTop){
+      document.getElementById("progress-last").textContent = "—";
+    } else {
+      document.getElementById("progress-last").textContent = cardio ? (lastTop.minutes + " min") : (lastTop.peso + "kg × " + lastTop.reps);
+    }
 
-    var maxWeight = 0;
+    var maxVal = 0;
     sessions.forEach(function(s){
-      s.sets.forEach(function(st){ if(st.peso > maxWeight) maxWeight = st.peso; });
+      s.sets.forEach(function(st){
+        var v = cardio ? st.minutes : st.peso;
+        if(v > maxVal) maxVal = v;
+      });
     });
-    document.getElementById("progress-max").textContent = maxWeight + "kg";
+    document.getElementById("progress-max").textContent = cardio ? (maxVal + " min") : (maxVal + "kg");
 
-    renderProgressChart(sessions);
+    renderProgressChart(sessions, cardio);
 
     var listWrap = document.getElementById("progress-sessions");
     listWrap.innerHTML = "";
@@ -990,12 +1052,12 @@
     });
   }
 
-  function renderProgressChart(sessions){
+  function renderProgressChart(sessions, cardio){
     var canvas = document.getElementById("progress-chart");
     if(!canvas || typeof Chart === "undefined") return;
 
     var labels = sessions.map(function(s){ return fmtDateShort(s.date); });
-    var weightData = sessions.map(function(s){ var t = topSet(s); return t ? t.peso : 0; });
+    var chartData = sessions.map(function(s){ var t = topSet(s); if(!t) return 0; return cardio ? t.minutes : t.peso; });
 
     if(progressChart){ progressChart.destroy(); }
     progressChart = new Chart(canvas, {
@@ -1003,8 +1065,8 @@
       data: {
         labels: labels,
         datasets: [{
-          label: "Peso máximo (kg)",
-          data: weightData,
+          label: cardio ? "Minutos" : "Peso máximo (kg)",
+          data: chartData,
           borderColor: "#FF6A2B",
           backgroundColor: "rgba(255,106,43,0.14)",
           pointBackgroundColor: "#FF6A2B",
@@ -1138,6 +1200,43 @@
     });
   }
 
+  function initImportBtn(){
+    document.getElementById("import-btn").addEventListener("click", function(){
+      var raw = document.getElementById("import-json").value.trim();
+      if(!raw){ showToast("Pega el JSON primero."); return; }
+      var parsed;
+      try{ parsed = JSON.parse(raw); }
+      catch(e){ showToast("JSON inválido. Revisa el formato."); return; }
+      if(!Array.isArray(parsed)){ showToast("Debe ser un arreglo de registros."); return; }
+
+      var added = 0;
+      parsed.forEach(function(item){
+        if(!item || !item.date || !item.category || !item.exercise || !Array.isArray(item.sets)) return;
+        if(!state.exercises[item.category]) state.exercises[item.category] = [];
+        var exists = state.exercises[item.category].some(function(e){ return e.name === item.exercise; });
+        if(!exists) state.exercises[item.category].push({ name: item.exercise, video: "" });
+        state.log.push({
+          id: uid(),
+          date: item.date,
+          category: item.category,
+          exercise: item.exercise,
+          sets: item.sets
+        });
+        added++;
+      });
+
+      if(added === 0){ showToast("No se importó nada. Revisa el formato."); return; }
+
+      saveData();
+      document.getElementById("import-json").value = "";
+      showToast(added + " registros importados ✓");
+      renderManage();
+      renderCategoryChips();
+      if(state.activeTab === "historial") renderHistory();
+      if(state.activeTab === "progreso") renderProgress();
+    });
+  }
+
   // ---------- init ----------
   function init(){
     document.getElementById("input-date").value = todayStr();
@@ -1148,6 +1247,7 @@
     initHistoryFilter();
     initAddCategory();
     initProgressSelect();
+    initImportBtn();
     document.getElementById("input-date").addEventListener("change", function(){
       renderTodayList();
       if(state.selectedCategory){
