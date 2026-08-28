@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#14161A">
 <title>Registro de Entrenamiento</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
     --bg: #14161A;
@@ -170,6 +171,20 @@
   .add-ex-row input{ margin-bottom:0; flex:1; }
 
   .video-box{ margin: -4px 0 16px; }
+
+  .last-time{
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; margin: -4px 0 16px;
+  }
+  .last-time-label{
+    display:block; color: var(--text-faint); font-weight: 700; text-transform: uppercase;
+    letter-spacing: .03em; font-size: 10.5px; margin-bottom: 4px;
+  }
+  .last-time-sets{ font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .last-time-sets .trend-up{ color: #3DDC97; }
+  .last-time-sets .trend-down{ color: var(--danger); }
+
+  .chart-wrap{ position: relative; width: 100%; height: 240px; }
   .video-embed{ position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#000; }
   .video-embed iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
   .video-link{ display:inline-flex; align-items:center; gap:6px; color: var(--accent); font-weight:700; font-size:13px; text-decoration:none; }
@@ -210,6 +225,7 @@
     <nav class="tabs">
       <button data-tab="registrar" class="active">Registrar</button>
       <button data-tab="historial">Historial</button>
+      <button data-tab="progreso">Progreso</button>
       <button data-tab="ejercicios">Ejercicios</button>
     </nav>
   </div>
@@ -234,6 +250,7 @@
       <select id="input-exercise"></select>
 
       <div id="exercise-video"></div>
+      <div id="last-time-hint"></div>
 
       <label>Series</label>
       <div class="sets-table" id="sets-table"></div>
@@ -269,6 +286,37 @@
     </div>
 
     <div id="history-list"></div>
+  </section>
+
+  <!-- PROGRESO -->
+  <section class="panel" id="panel-progreso">
+    <div class="card">
+      <label for="progress-exercise">Ejercicio</label>
+      <select id="progress-exercise"></select>
+    </div>
+
+    <div class="empty" id="progress-empty" style="display:none;">Todavía no tienes ejercicios registrados.</div>
+
+    <div id="progress-content" style="display:none;">
+      <div class="stat-row">
+        <div class="stat">
+          <div class="k">Último registro</div>
+          <div class="v" id="progress-last">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Máximo registrado</div>
+          <div class="v" id="progress-max">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Progresión de peso</h2>
+        <div class="chart-wrap"><canvas id="progress-chart" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Historial de este ejercicio</h2>
+        <div id="progress-sessions"></div>
+      </div>
+    </div>
   </section>
 
   <!-- EJERCICIOS -->
@@ -457,6 +505,24 @@
     return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
   }
 
+  function fmtDateShort(dateStr){
+    var parts = dateStr.split("-");
+    var months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+    return parseInt(parts[2]) + " " + months[parseInt(parts[1]) - 1];
+  }
+
+  function topSet(entry){
+    if(!entry.sets || entry.sets.length === 0) return null;
+    return entry.sets.reduce(function(best, s){ return (!best || s.peso > best.peso) ? s : best; }, null);
+  }
+
+  function getExerciseSessions(cat, exName){
+    return state.log
+      .filter(function(e){ return e.category === cat && e.exercise === exName; })
+      .slice()
+      .sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  }
+
   function showToast(msg){
     var t = document.getElementById("toast");
     t.textContent = msg;
@@ -516,6 +582,7 @@
         document.getElementById("panel-" + b.dataset.tab).classList.add("active");
         state.activeTab = b.dataset.tab;
         if(b.dataset.tab === "historial") renderHistory();
+        if(b.dataset.tab === "progreso") renderProgress();
         if(b.dataset.tab === "ejercicios") renderManage();
       });
     });
@@ -568,6 +635,37 @@
     var names = (state.exercises[cat] || []).map(function(e){ return e.name; });
     if(names.indexOf(prevValue) !== -1) sel.value = prevValue;
     renderExerciseVideo(cat, sel.value);
+    renderLastTimeHint(cat, sel.value);
+  }
+
+  function renderLastTimeHint(cat, exName){
+    var wrap = document.getElementById("last-time-hint");
+    if(!wrap) return;
+    wrap.innerHTML = "";
+    if(!cat || !exName || exName === "__custom__") return;
+    var todayVal = document.getElementById("input-date").value || todayStr();
+    var sessions = getExerciseSessions(cat, exName).filter(function(e){ return e.date !== todayVal; });
+    if(sessions.length === 0) return;
+
+    var last = sessions[sessions.length - 1];
+    var lastTop = topSet(last);
+    var setsTxt = last.sets.map(function(s){ return s.peso + "kg×" + s.reps; }).join(", ");
+
+    var trendHtml = "";
+    if(sessions.length > 1 && lastTop){
+      var prevTop = topSet(sessions[sessions.length - 2]);
+      if(prevTop){
+        var diff = lastTop.peso - prevTop.peso;
+        if(diff > 0) trendHtml = ' <span class="trend-up">▲ +' + diff + 'kg vs. anterior</span>';
+        else if(diff < 0) trendHtml = ' <span class="trend-down">▼ ' + diff + 'kg vs. anterior</span>';
+      }
+    }
+
+    var box = document.createElement("div");
+    box.className = "last-time";
+    box.innerHTML = '<span class="last-time-label">Última vez · ' + fmtDateHuman(last.date) + '</span>' +
+      '<span class="last-time-sets">' + setsTxt + trendHtml + '</span>';
+    wrap.appendChild(box);
   }
 
   function refreshAll(){
@@ -581,6 +679,7 @@
     }
     renderTodayList();
     if(state.activeTab === "historial") renderHistory();
+    if(state.activeTab === "progreso") renderProgress();
     if(state.activeTab === "ejercicios") renderManage();
   }
 
@@ -814,6 +913,133 @@
     document.getElementById("filter-cat").addEventListener("change", renderHistory);
   }
 
+  // ---------- progreso tab ----------
+  var progressChart = null;
+
+  function populateProgressSelect(){
+    var sel = document.getElementById("progress-exercise");
+    var prevValue = sel.value;
+    sel.innerHTML = "";
+    var any = false;
+    Object.keys(state.exercises).forEach(function(cat){
+      var exList = state.exercises[cat];
+      if(!exList || exList.length === 0) return;
+      var group = document.createElement("optgroup");
+      group.label = cat;
+      exList.forEach(function(ex){
+        var o = document.createElement("option");
+        o.value = cat + "||" + ex.name;
+        o.textContent = ex.name;
+        group.appendChild(o);
+        any = true;
+      });
+      sel.appendChild(group);
+    });
+    if(!any) return;
+    var values = Array.prototype.map.call(sel.querySelectorAll("option"), function(o){ return o.value; });
+    if(values.indexOf(prevValue) !== -1) sel.value = prevValue;
+  }
+
+  function renderProgress(){
+    populateProgressSelect();
+    updateProgressView();
+  }
+
+  function updateProgressView(){
+    var sel = document.getElementById("progress-exercise");
+    var emptyBox = document.getElementById("progress-empty");
+    var content = document.getElementById("progress-content");
+
+    if(!sel.value){
+      emptyBox.textContent = "Todavía no tienes ejercicios registrados.";
+      emptyBox.style.display = "block";
+      content.style.display = "none";
+      return;
+    }
+
+    var parts = sel.value.split("||");
+    var cat = parts[0], exName = parts.slice(1).join("||");
+    var sessions = getExerciseSessions(cat, exName);
+
+    if(sessions.length === 0){
+      emptyBox.textContent = 'Aún no registraste "' + exName + '". Regístralo en la pestaña Registrar para ver su progreso aquí.';
+      emptyBox.style.display = "block";
+      content.style.display = "none";
+      return;
+    }
+
+    emptyBox.style.display = "none";
+    content.style.display = "block";
+
+    var last = sessions[sessions.length - 1];
+    var lastTop = topSet(last);
+    document.getElementById("progress-last").textContent = lastTop ? (lastTop.peso + "kg × " + lastTop.reps) : "—";
+
+    var maxWeight = 0;
+    sessions.forEach(function(s){
+      s.sets.forEach(function(st){ if(st.peso > maxWeight) maxWeight = st.peso; });
+    });
+    document.getElementById("progress-max").textContent = maxWeight + "kg";
+
+    renderProgressChart(sessions);
+
+    var listWrap = document.getElementById("progress-sessions");
+    listWrap.innerHTML = "";
+    sessions.slice().reverse().forEach(function(entry){
+      listWrap.appendChild(buildSessionItem(entry));
+    });
+  }
+
+  function renderProgressChart(sessions){
+    var canvas = document.getElementById("progress-chart");
+    if(!canvas || typeof Chart === "undefined") return;
+
+    var labels = sessions.map(function(s){ return fmtDateShort(s.date); });
+    var weightData = sessions.map(function(s){ var t = topSet(s); return t ? t.peso : 0; });
+
+    if(progressChart){ progressChart.destroy(); }
+    progressChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Peso máximo (kg)",
+          data: weightData,
+          borderColor: "#FF6A2B",
+          backgroundColor: "rgba(255,106,43,0.14)",
+          pointBackgroundColor: "#FF6A2B",
+          pointBorderColor: "#14161A",
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.25,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#1C1F25",
+            titleColor: "#F2F1ED",
+            bodyColor: "#F2F1ED",
+            borderColor: "#2C3038",
+            borderWidth: 1
+          }
+        },
+        scales: {
+          x: { ticks: { color: "#8B8F98", font: { size: 11 } }, grid: { color: "rgba(255,255,255,0.05)" } },
+          y: { ticks: { color: "#8B8F98", font: { size: 11 } }, grid: { color: "rgba(255,255,255,0.06)" }, beginAtZero: false }
+        }
+      }
+    });
+  }
+
+  function initProgressSelect(){
+    document.getElementById("progress-exercise").addEventListener("change", updateProgressView);
+  }
+
   // ---------- ejercicios tab ----------
   function renderManage(){
     var wrap = document.getElementById("manage-list");
@@ -921,7 +1147,13 @@
     initSaveEntryBtn();
     initHistoryFilter();
     initAddCategory();
-    document.getElementById("input-date").addEventListener("change", renderTodayList);
+    initProgressSelect();
+    document.getElementById("input-date").addEventListener("change", function(){
+      renderTodayList();
+      if(state.selectedCategory){
+        renderLastTimeHint(state.selectedCategory, document.getElementById("input-exercise").value);
+      }
+    });
     subscribeData();
   }
 
