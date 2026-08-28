@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#14161A">
+<title>Registro de Entrenamiento</title>
+<style>
+  :root{
+    --bg: #14161A;
+    --surface: #1C1F25;
+    --surface-2: #23262D;
+    --line: #2C3038;
+    --text: #F2F1ED;
+    --text-muted: #8B8F98;
+    --text-faint: #5B5F68;
+    --accent: #FF6A2B;
+    --accent-ink: #1A0D06;
+    --danger: #E5484D;
+    --radius: 14px;
+    --mono: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: radial-gradient(1200px 800px at 50% -10%, #1B1E24 0%, #101216 55%, #0C0D10 100%);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding-bottom: 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap{ max-width: 720px; margin: 0 auto; padding: 0 18px; }
+
+  header.top{
+    position: sticky; top:0; z-index: 20;
+    background: rgba(16,17,20,0.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-inner{ padding: 18px 18px 0; max-width: 720px; margin: 0 auto; }
+  .eyebrow{
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    color: var(--accent); text-transform: uppercase; font-weight: 600;
+  }
+  .sync-status{
+    display:flex; align-items:center; gap:6px; font-family: var(--mono); font-size: 11px;
+    color: var(--text-faint); margin: -8px 0 14px;
+  }
+  .sync-status.ok{ color: #3DDC97; }
+  .sync-status.err{ color: var(--danger); }
+  .sync-dot{ width:7px; height:7px; border-radius:50%; background: currentColor; flex:none; }
+  h1.title{
+    margin: 4px 0 16px;
+    font-size: 26px; font-weight: 900; letter-spacing: -0.02em;
+    text-transform: uppercase; line-height: 1.05;
+  }
+  nav.tabs{ display:flex; gap: 4px; }
+  nav.tabs button{
+    flex: 1; padding: 12px 6px 14px; background: transparent; border: none;
+    color: var(--text-muted); font-family: var(--sans); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.02em; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+  }
+  nav.tabs button.active{ color: var(--text); border-bottom-color: var(--accent); }
+  nav.tabs button:hover{ color: var(--text); }
+
+  main{ padding-top: 20px; }
+  section.panel{ display:none; }
+  section.panel.active{ display:block; }
+
+  .card{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .card h2{ margin: 0 0 12px; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+  label{ display:block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+  input[type=date], input[type=text], input[type=number], select{
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 15px;
+    font-family: var(--sans); margin-bottom: 14px;
+  }
+  input:focus, select:focus, button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .chip-grid{ display:flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .chip{
+    padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 700;
+    cursor: pointer; display:flex; align-items:center; gap:7px; transition: transform .1s, border-color .15s;
+  }
+  .chip .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .chip.selected{ border-color: var(--chip-color, var(--accent)); background: color-mix(in srgb, var(--chip-color, var(--accent)) 18%, var(--surface-2)); }
+  .chip:active{ transform: scale(0.97); }
+
+  .sets-table{ margin-top: 6px; }
+  .set-row{ display:grid; grid-template-columns: 34px 1fr 1fr 34px; gap: 8px; align-items:center; margin-bottom: 8px; }
+  .set-row .idx{ font-family: var(--mono); color: var(--text-faint); font-size: 13px; text-align:center; }
+  .set-row input{ margin-bottom: 0; padding: 9px 10px; font-family: var(--mono); }
+  .rm-set{
+    background: transparent; border: 1px solid var(--line); color: var(--text-faint);
+    border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .rm-set:hover{ color: var(--danger); border-color: var(--danger); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding: 11px 16px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font-weight: 700; font-size: 14px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .btn:hover{ border-color: #3a3f49; }
+  .btn.full{ width:100%; }
+  .btn.primary{ background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover{ filter: brightness(1.06); }
+  .btn.ghost{ background: transparent; }
+  .btn.small{ padding: 7px 11px; font-size: 12px; }
+  .btn[disabled]{ opacity: 0.4; cursor: not-allowed; }
+
+  .row-between{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 12px; }
+
+  .empty{
+    color: var(--text-faint); font-size: 13px; text-align:center; padding: 24px 10px;
+    border: 1px dashed var(--line); border-radius: 10px;
+  }
+
+  .session-item{ border-top: 1px solid var(--line); padding: 12px 0; }
+  .session-item:first-child{ border-top: none; padding-top: 0; }
+  .session-item-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+  .ex-name{ font-weight: 800; font-size: 14.5px; display:flex; align-items:center; gap:8px; }
+  .ex-name .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .sets-summary{ font-family: var(--mono); font-size: 13px; color: var(--text-muted); line-height:1.7; }
+  .set-pill{ background: var(--surface-2); border:1px solid var(--line); border-radius:6px; padding:2px 7px; margin-right:6px; display:inline-block; margin-bottom:4px; }
+  .icon-btn{ background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 4px 6px; }
+  .icon-btn:hover{ color: var(--danger); }
+
+  .stat-row{ display:flex; gap:10px; margin-bottom: 16px; }
+  .stat{ flex:1; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .stat .k{ font-size: 11px; color: var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  .stat .v{ font-family: var(--mono); font-size: 20px; font-weight: 700; }
+
+  .day-group{ margin-bottom: 14px; }
+  .day-head{ display:flex; align-items:center; justify-content:space-between; padding: 12px 0 8px; cursor:pointer; }
+  .day-head .d{ font-weight: 900; font-size: 15px; letter-spacing: -0.01em; }
+  .day-head .meta{ font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .day-body{ display:none; }
+  .day-body.open{ display:block; }
+  .chev{ color: var(--text-faint); transition: transform .15s; font-size: 12px; }
+  .chev.open{ transform: rotate(90deg); }
+
+  .filter-row{ display:flex; gap:8px; margin-bottom: 14px; }
+  .filter-row select{ margin-bottom: 0; }
+
+  .manage-cat{ margin-bottom: 22px; }
+  .manage-cat-head{ display:flex; align-items:center; gap:8px; margin-bottom: 10px; }
+  .manage-cat-head .dot{ width:11px; height:11px; border-radius:50%; }
+  .manage-cat-head h3{ margin:0; font-size:14px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
+  .ex-list{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .ex-tag{
+    background: var(--surface-2); border:1px solid var(--line); border-radius: 999px;
+    padding: 7px 8px 7px 13px; font-size: 13px; display:flex; align-items:center; gap:8px;
+  }
+  .ex-tag button{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; padding:0 4px; }
+  .ex-tag button:hover{ color: var(--danger); }
+  .add-ex-row{ display:flex; gap:8px; }
+  .add-ex-row input{ margin-bottom:0; flex:1; }
+
+  .video-box{ margin: -4px 0 16px; }
+  .video-embed{ position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#000; }
+  .video-embed iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
+  .video-link{ display:inline-flex; align-items:center; gap:6px; color: var(--accent); font-weight:700; font-size:13px; text-decoration:none; }
+  .video-link:hover{ text-decoration: underline; }
+  .video-actions{ display:flex; gap:14px; margin-top:8px; }
+  .video-actions .icon-btn{ padding:0; font-size:12px; color: var(--text-muted); }
+  .video-actions .icon-btn:hover{ color: var(--accent); }
+
+  .ex-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
+  .ex-row .left{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .ex-row .name{ font-weight:700; font-size:13.5px; }
+  .ex-row .vid-status{ font-size:11.5px; color:var(--text-faint); }
+  .ex-row .vid-status a{ text-decoration:none; font-weight:600; }
+  .ex-row .vid-status a:hover{ text-decoration:underline; }
+  .ex-row .actions{ display:flex; gap:12px; flex:none; }
+  .ex-row .actions .icon-btn{ font-size:12px; font-weight:600; }
+
+  .toast{
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: #14161A; padding: 11px 18px; border-radius: 999px;
+    font-weight: 700; font-size: 13px; opacity: 0; pointer-events: none; transition: all .25s ease;
+    z-index: 50; white-space: nowrap;
+  }
+  .toast.show{ opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .muted-small{ font-size: 12px; color: var(--text-faint); margin-top: -6px; margin-bottom: 14px; }
+
+  ::placeholder{ color: var(--text-faint); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="eyebrow">Bitácora de fuerza</div>
+    <h1 class="title">Registro de Entrenamiento</h1>
+    <div class="sync-status" id="sync-status"><span class="sync-dot"></span>Conectando...</div>
+    <nav class="tabs">
+      <button data-tab="registrar" class="active">Registrar</button>
+      <button data-tab="historial">Historial</button>
+      <button data-tab="ejercicios">Ejercicios</button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+
+  <!-- REGISTRAR -->
+  <section class="panel active" id="panel-registrar">
+    <div class="card">
+      <label for="input-date">Fecha</label>
+      <input type="date" id="input-date">
+
+      <label>¿Qué trabajaste?</label>
+      <div class="chip-grid" id="cat-chips"></div>
+    </div>
+
+    <div class="card" id="exercise-card" style="display:none;">
+      <h2 id="exercise-card-title">Ejercicio</h2>
+      <label for="input-exercise">Ejercicio</label>
+      <select id="input-exercise"></select>
+
+      <div id="exercise-video"></div>
+
+      <label>Series</label>
+      <div class="sets-table" id="sets-table"></div>
+      <button class="btn small" id="add-set-btn" type="button">+ Añadir serie</button>
+
+      <div style="height:14px;"></div>
+      <button class="btn primary full" id="save-entry-btn" type="button">Guardar ejercicio</button>
+    </div>
+
+    <div class="card">
+      <div class="row-between">
+        <h2 style="margin:0;">Sesión de hoy</h2>
+      </div>
+      <div id="today-list"></div>
+    </div>
+  </section>
+
+  <!-- HISTORIAL -->
+  <section class="panel" id="panel-historial">
+    <div class="stat-row">
+      <div class="stat">
+        <div class="k">Sesiones</div>
+        <div class="v" id="stat-sessions">0</div>
+      </div>
+      <div class="stat">
+        <div class="k">Volumen total</div>
+        <div class="v" id="stat-volume">0 kg</div>
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <select id="filter-cat"><option value="">Todas las categorías</option></select>
+    </div>
+
+    <div id="history-list"></div>
+  </section>
+
+  <!-- EJERCICIOS -->
+  <section class="panel" id="panel-ejercicios">
+    <div class="card">
+      <h2>Añadir categoría</h2>
+      <div class="add-ex-row">
+        <input type="text" id="new-cat-name" placeholder="Ej. Antebrazo, Cardio HIIT...">
+        <button class="btn primary" id="add-cat-btn" type="button">Añadir</button>
+      </div>
+    </div>
+    <div id="manage-list"></div>
+  </section>
+
+</main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyArsm17M8L3WZQvvVnvhIZqavsevIxvERM",
+    authDomain: "entrenamientos-gimnasio.firebaseapp.com",
+    projectId: "entrenamientos-gimnasio",
+    storageBucket: "entrenamientos-gimnasio.firebasestorage.app",
+    messagingSenderId: "741140933208",
+    appId: "1:741140933208:web:f9f2c912ddd060b5d2382d"
+  };
+
+  var fbApp = initializeApp(firebaseConfig);
+  var db = getFirestore(fbApp);
+  var workoutDocRef = doc(db, "workout", "data");
+(function(){
+
+  var DEFAULT_EXERCISES = {
+    "Piernas": ["Sentadillas","Prensa de piernas","Zancadas","Peso muerto rumano","Extensión de cuádriceps","Curl femoral","Elevación de talones"],
+    "Pecho": ["Press de banca","Press inclinado con mancuernas","Aperturas con mancuerna","Press en máquina","Fondos en paralelas","Cruce de poleas"],
+    "Espalda": ["Dominadas","Remo con barra","Remo en polea baja","Jalón al pecho","Peso muerto","Remo en máquina"],
+    "Hombros": ["Press militar","Elevaciones laterales","Elevaciones frontales","Pájaros (deltoide posterior)","Press Arnold"],
+    "Triceps": ["Press francés","Extensión en polea","Fondos en banco","Patada de tríceps"],
+    "Biceps": ["Curl con barra","Curl con mancuernas","Curl martillo","Curl en polea"],
+    "Abdominales": ["Crunch","Plancha","Elevación de piernas","Rueda abdominal","Crunch en polea"],
+    "Cardio": ["Cinta","Bicicleta estática","Elíptica","Remo","Salto de cuerda"]
+  };
+
+  var CAT_COLORS = {
+    "Piernas": "#E8491D",
+    "Pecho": "#FF8A3D",
+    "Espalda": "#3DDC97",
+    "Hombros": "#FFD23D",
+    "Triceps": "#4FA3FF",
+    "Biceps": "#A78BFA",
+    "Abdominales": "#FF6BAE",
+    "Cardio": "#34D1C7"
+  };
+  var FALLBACK_PALETTE = ["#E8491D","#FF8A3D","#3DDC97","#FFD23D","#4FA3FF","#A78BFA","#FF6BAE","#34D1C7","#C9CBA3","#F26419"];
+
+  var STORAGE_KEY = "workout-data";
+
+  var state = {
+    exercises: {},      // { category: [{name,video}] }
+    log: [],             // [{id,date,category,exercise,sets:[{peso,reps}]}]
+    selectedCategory: null,
+    currentSets: [{peso:"", reps:""}],
+    activeTab: "registrar",
+    openDay: null,
+    ready: false
+  };
+
+  function colorFor(cat){
+    if(CAT_COLORS[cat]) return CAT_COLORS[cat];
+    var idx = 0;
+    for(var i=0;i<cat.length;i++){ idx += cat.charCodeAt(i); }
+    return FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
+  }
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+  function migrateExercises(ex){
+    var out = {};
+    Object.keys(ex || {}).forEach(function(cat){
+      out[cat] = (ex[cat] || []).map(function(item){
+        if(typeof item === "string") return { name: item, video: "" };
+        return { name: item.name, video: item.video || "" };
+      });
+    });
+    return out;
+  }
+
+  function findExercise(cat, name){
+    return (state.exercises[cat] || []).find(function(e){ return e.name === name; });
+  }
+
+  function getYouTubeId(url){
+    if(!url) return null;
+    var m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,15})/);
+    return m ? m[1] : null;
+  }
+
+  function promptVideoEdit(cat, ex){
+    var url = prompt("Pega el enlace del video (YouTube u otra página):", ex.video || "");
+    if(url === null) return;
+    url = url.trim();
+    if(url && !/^https?:\/\//i.test(url)){
+      showToast("El enlace debe empezar con http:// o https://");
+      return;
+    }
+    ex.video = url;
+    saveData();
+    renderExerciseVideo(cat, ex.name);
+    if(state.activeTab === "ejercicios") renderManage();
+  }
+
+  function buildVideoBlock(wrap, ex, cat){
+    var box = document.createElement("div");
+    box.className = "video-box";
+
+    if(ex.video){
+      var ytId = getYouTubeId(ex.video);
+      if(ytId){
+        var frameWrap = document.createElement("div");
+        frameWrap.className = "video-embed";
+        var iframe = document.createElement("iframe");
+        iframe.src = "https://www.youtube.com/embed/" + ytId;
+        iframe.loading = "lazy";
+        iframe.allowFullscreen = true;
+        iframe.title = ex.name + " - video de referencia";
+        frameWrap.appendChild(iframe);
+        box.appendChild(frameWrap);
+      } else {
+        var link = document.createElement("a");
+        link.href = ex.video; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.className = "video-link";
+        link.textContent = "▶ Ver video de referencia";
+        box.appendChild(link);
+      }
+      var actions = document.createElement("div");
+      actions.className = "video-actions";
+      var editBtn = document.createElement("button");
+      editBtn.type = "button"; editBtn.className = "icon-btn"; editBtn.textContent = "Cambiar enlace";
+      editBtn.addEventListener("click", function(){ promptVideoEdit(cat, ex); });
+      var rmBtn = document.createElement("button");
+      rmBtn.type = "button"; rmBtn.className = "icon-btn"; rmBtn.textContent = "Quitar";
+      rmBtn.addEventListener("click", function(){
+        ex.video = "";
+        saveData();
+        renderExerciseVideo(cat, ex.name);
+      });
+      actions.appendChild(editBtn); actions.appendChild(rmBtn);
+      box.appendChild(actions);
+    } else {
+      var addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn small ghost";
+      addBtn.textContent = "+ Añadir video de referencia";
+      addBtn.addEventListener("click", function(){ promptVideoEdit(cat, ex); });
+      box.appendChild(addBtn);
+    }
+    wrap.appendChild(box);
+  }
+
+  function renderExerciseVideo(cat, exName){
+    var wrap = document.getElementById("exercise-video");
+    if(!wrap) return;
+    wrap.innerHTML = "";
+    var ex = findExercise(cat, exName);
+    if(!ex) return;
+    buildVideoBlock(wrap, ex, cat);
+  }
+
+  function todayStr(){
+    var d = new Date();
+    var off = d.getTimezoneOffset();
+    var local = new Date(d.getTime() - off*60000);
+    return local.toISOString().slice(0,10);
+  }
+
+  function fmtDateHuman(dateStr){
+    var parts = dateStr.split("-");
+    var d = new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+    var days = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+    var months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+    return days[d.getDay()] + " " + d.getDate() + " " + months[d.getMonth()];
+  }
+
+  function showToast(msg){
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(function(){ t.classList.remove("show"); }, 1800);
+  }
+
+  // ---------- persistence (Firestore, real-time sync) ----------
+  var unsubscribe = null;
+  var suppressNextSnapshot = false;
+
+  function updateSyncStatus(kind, label){
+    var el = document.getElementById("sync-status");
+    if(!el) return;
+    el.className = "sync-status" + (kind ? " " + kind : "");
+    el.innerHTML = '<span class="sync-dot"></span>' + label;
+  }
+
+  function subscribeData(){
+    updateSyncStatus("", "Conectando...");
+    unsubscribe = onSnapshot(workoutDocRef, function(snap){
+      if(snap.exists()){
+        var data = snap.data() || {};
+        state.exercises = migrateExercises(data.exercises || DEFAULT_EXERCISES);
+        state.log = data.log || [];
+      } else {
+        state.exercises = migrateExercises(DEFAULT_EXERCISES);
+        state.log = [];
+        setDoc(workoutDocRef, { exercises: state.exercises, log: state.log }).catch(function(){});
+      }
+      updateSyncStatus("ok", "Sincronizado");
+      state.ready = true;
+      refreshAll();
+    }, function(err){
+      updateSyncStatus("err", "Sin conexión");
+      showToast("No se pudo conectar con Firebase.");
+    });
+  }
+
+  async function saveData(){
+    try{
+      await setDoc(workoutDocRef, { exercises: state.exercises, log: state.log });
+    }catch(e){
+      updateSyncStatus("err", "Error al guardar");
+      showToast("No se pudo guardar. Revisa tu conexión.");
+    }
+  }
+
+  // ---------- tabs ----------
+  function initTabs(){
+    var btns = document.querySelectorAll("nav.tabs button");
+    btns.forEach(function(b){
+      b.addEventListener("click", function(){
+        btns.forEach(function(x){ x.classList.remove("active"); });
+        b.classList.add("active");
+        document.querySelectorAll("section.panel").forEach(function(p){ p.classList.remove("active"); });
+        document.getElementById("panel-" + b.dataset.tab).classList.add("active");
+        state.activeTab = b.dataset.tab;
+        if(b.dataset.tab === "historial") renderHistory();
+        if(b.dataset.tab === "ejercicios") renderManage();
+      });
+    });
+  }
+
+  // ---------- registrar tab ----------
+  function renderCategoryChips(){
+    var wrap = document.getElementById("cat-chips");
+    wrap.innerHTML = "";
+    Object.keys(state.exercises).forEach(function(cat){
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip" + (state.selectedCategory === cat ? " selected" : "");
+      chip.style.setProperty("--chip-color", colorFor(cat));
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = colorFor(cat);
+      chip.appendChild(dot);
+      chip.appendChild(document.createTextNode(cat));
+      chip.addEventListener("click", function(){ selectCategory(cat); });
+      wrap.appendChild(chip);
+    });
+  }
+
+  function selectCategory(cat){
+    state.selectedCategory = cat;
+    state.currentSets = [{peso:"", reps:""}];
+    renderCategoryChips();
+    var card = document.getElementById("exercise-card");
+    card.style.display = "block";
+    document.getElementById("exercise-card-title").textContent = cat;
+    populateExerciseSelect(cat);
+    renderSetsTable();
+  }
+
+  function populateExerciseSelect(cat, preserveValue){
+    var sel = document.getElementById("input-exercise");
+    if(!sel) return;
+    var prevValue = preserveValue !== undefined ? preserveValue : sel.value;
+    sel.innerHTML = "";
+    (state.exercises[cat] || []).forEach(function(ex){
+      var o = document.createElement("option");
+      o.value = ex.name; o.textContent = ex.name;
+      sel.appendChild(o);
+    });
+    var custom = document.createElement("option");
+    custom.value = "__custom__";
+    custom.textContent = "+ Otro ejercicio...";
+    sel.appendChild(custom);
+    var names = (state.exercises[cat] || []).map(function(e){ return e.name; });
+    if(names.indexOf(prevValue) !== -1) sel.value = prevValue;
+    renderExerciseVideo(cat, sel.value);
+  }
+
+  function refreshAll(){
+    renderCategoryChips();
+    if(state.selectedCategory && state.exercises[state.selectedCategory]){
+      populateExerciseSelect(state.selectedCategory);
+    } else if(state.selectedCategory){
+      // category was removed elsewhere
+      state.selectedCategory = null;
+      document.getElementById("exercise-card").style.display = "none";
+    }
+    renderTodayList();
+    if(state.activeTab === "historial") renderHistory();
+    if(state.activeTab === "ejercicios") renderManage();
+  }
+
+  function renderSetsTable(){
+    var wrap = document.getElementById("sets-table");
+    wrap.innerHTML = "";
+    state.currentSets.forEach(function(s, i){
+      var row = document.createElement("div");
+      row.className = "set-row";
+
+      var idx = document.createElement("div");
+      idx.className = "idx"; idx.textContent = (i+1);
+
+      var peso = document.createElement("input");
+      peso.type = "number"; peso.inputMode = "decimal"; peso.placeholder = "Peso (kg)";
+      peso.value = s.peso; peso.min = "0"; peso.step = "0.5";
+      peso.addEventListener("input", function(){ state.currentSets[i].peso = peso.value; });
+
+      var reps = document.createElement("input");
+      reps.type = "number"; reps.inputMode = "numeric"; reps.placeholder = "Reps";
+      reps.value = s.reps; reps.min = "0"; reps.step = "1";
+      reps.addEventListener("input", function(){ state.currentSets[i].reps = reps.value; });
+
+      var rm = document.createElement("button");
+      rm.className = "rm-set"; rm.type = "button"; rm.textContent = "×";
+      rm.addEventListener("click", function(){
+        if(state.currentSets.length === 1) return;
+        state.currentSets.splice(i,1);
+        renderSetsTable();
+      });
+
+      row.appendChild(idx); row.appendChild(peso); row.appendChild(reps); row.appendChild(rm);
+      wrap.appendChild(row);
+    });
+  }
+
+  function initExerciseSelectHandler(){
+    document.getElementById("input-exercise").addEventListener("change", function(e){
+      if(e.target.value === "__custom__"){
+        var name = prompt("Nombre del nuevo ejercicio:");
+        if(name && name.trim()){
+          name = name.trim();
+          if(!state.exercises[state.selectedCategory].some(function(x){ return x.name === name; })){
+            state.exercises[state.selectedCategory].push({ name: name, video: "" });
+            saveData();
+          }
+          selectCategory(state.selectedCategory);
+          document.getElementById("input-exercise").value = name;
+          renderExerciseVideo(state.selectedCategory, name);
+        } else {
+          e.target.selectedIndex = 0;
+          renderExerciseVideo(state.selectedCategory, e.target.value);
+        }
+      } else {
+        renderExerciseVideo(state.selectedCategory, e.target.value);
+      }
+    });
+  }
+
+  function initAddSetBtn(){
+    document.getElementById("add-set-btn").addEventListener("click", function(){
+      state.currentSets.push({peso:"", reps:""});
+      renderSetsTable();
+    });
+  }
+
+  function initSaveEntryBtn(){
+    document.getElementById("save-entry-btn").addEventListener("click", function(){
+      var date = document.getElementById("input-date").value || todayStr();
+      var exercise = document.getElementById("input-exercise").value;
+      if(!state.selectedCategory || !exercise || exercise === "__custom__"){
+        showToast("Selecciona categoría y ejercicio.");
+        return;
+      }
+      var sets = state.currentSets
+        .map(function(s){ return { peso: parseFloat(s.peso) || 0, reps: parseInt(s.reps) || 0 }; })
+        .filter(function(s){ return s.reps > 0; });
+      if(sets.length === 0){
+        showToast("Añade al menos una serie con repeticiones.");
+        return;
+      }
+      state.log.push({
+        id: uid(),
+        date: date,
+        category: state.selectedCategory,
+        exercise: exercise,
+        sets: sets
+      });
+      saveData();
+      showToast("Ejercicio guardado ✓");
+      state.currentSets = [{peso:"", reps:""}];
+      renderSetsTable();
+      renderTodayList();
+    });
+  }
+
+  function renderTodayList(){
+    var date = document.getElementById("input-date").value || todayStr();
+    var wrap = document.getElementById("today-list");
+    var entries = state.log.filter(function(e){ return e.date === date; });
+    if(entries.length === 0){
+      wrap.innerHTML = '<div class="empty">Todavía no registraste ejercicios en esta fecha.</div>';
+      return;
+    }
+    wrap.innerHTML = "";
+    entries.slice().reverse().forEach(function(entry){
+      wrap.appendChild(buildSessionItem(entry));
+    });
+  }
+
+  function buildSessionItem(entry){
+    var item = document.createElement("div");
+    item.className = "session-item";
+
+    var head = document.createElement("div");
+    head.className = "session-item-head";
+
+    var name = document.createElement("div");
+    name.className = "ex-name";
+    var dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = colorFor(entry.category);
+    name.appendChild(dot);
+    name.appendChild(document.createTextNode(entry.exercise));
+
+    var del = document.createElement("button");
+    del.className = "icon-btn"; del.textContent = "Eliminar";
+    del.addEventListener("click", function(){
+      state.log = state.log.filter(function(e){ return e.id !== entry.id; });
+      saveData();
+      renderTodayList();
+      if(state.activeTab === "historial") renderHistory();
+    });
+
+    head.appendChild(name); head.appendChild(del);
+
+    var sets = document.createElement("div");
+    sets.className = "sets-summary";
+    entry.sets.forEach(function(s){
+      var pill = document.createElement("span");
+      pill.className = "set-pill";
+      pill.textContent = s.peso + "kg × " + s.reps;
+      sets.appendChild(pill);
+    });
+
+    item.appendChild(head);
+    item.appendChild(sets);
+    return item;
+  }
+
+  // ---------- historial tab ----------
+  function populateCategoryFilter(){
+    var sel = document.getElementById("filter-cat");
+    var current = sel.value;
+    sel.innerHTML = '<option value="">Todas las categorías</option>';
+    Object.keys(state.exercises).forEach(function(cat){
+      var o = document.createElement("option");
+      o.value = cat; o.textContent = cat;
+      sel.appendChild(o);
+    });
+    sel.value = current;
+  }
+
+  function renderHistory(){
+    populateCategoryFilter();
+    var filterCat = document.getElementById("filter-cat").value;
+    var filtered = state.log.filter(function(e){ return !filterCat || e.category === filterCat; });
+
+    var totalVolume = 0;
+    filtered.forEach(function(e){
+      e.sets.forEach(function(s){ totalVolume += s.peso * s.reps; });
+    });
+    var dates = {};
+    filtered.forEach(function(e){ dates[e.date] = true; });
+    document.getElementById("stat-sessions").textContent = Object.keys(dates).length;
+    document.getElementById("stat-volume").textContent = Math.round(totalVolume).toLocaleString("es-PE") + " kg";
+
+    var byDate = {};
+    filtered.forEach(function(e){
+      if(!byDate[e.date]) byDate[e.date] = [];
+      byDate[e.date].push(e);
+    });
+    var sortedDates = Object.keys(byDate).sort(function(a,b){ return a < b ? 1 : -1; });
+
+    var wrap = document.getElementById("history-list");
+    wrap.innerHTML = "";
+    if(sortedDates.length === 0){
+      wrap.innerHTML = '<div class="empty">No hay entrenamientos registrados todavía.</div>';
+      return;
+    }
+
+    sortedDates.forEach(function(date){
+      var group = document.createElement("div");
+      group.className = "day-group card";
+
+      var head = document.createElement("div");
+      head.className = "day-head";
+      var dayVolume = 0;
+      byDate[date].forEach(function(e){ e.sets.forEach(function(s){ dayVolume += s.peso*s.reps; }); });
+
+      var left = document.createElement("div");
+      var dEl = document.createElement("div"); dEl.className = "d"; dEl.textContent = fmtDateHuman(date);
+      var mEl = document.createElement("div"); mEl.className = "meta";
+      mEl.textContent = byDate[date].length + " ejercicio(s) · " + Math.round(dayVolume).toLocaleString("es-PE") + " kg";
+      left.appendChild(dEl); left.appendChild(mEl);
+
+      var chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "▸";
+
+      head.appendChild(left); head.appendChild(chev);
+
+      var body = document.createElement("div");
+      body.className = "day-body" + (state.openDay === date ? " open" : "");
+      if(state.openDay === date) chev.classList.add("open");
+      byDate[date].forEach(function(entry){
+        body.appendChild(buildSessionItem(entry));
+      });
+
+      head.addEventListener("click", function(){
+        var isOpen = body.classList.contains("open");
+        state.openDay = isOpen ? null : date;
+        body.classList.toggle("open");
+        chev.classList.toggle("open");
+      });
+
+      group.appendChild(head);
+      group.appendChild(body);
+      wrap.appendChild(group);
+    });
+  }
+
+  function initHistoryFilter(){
+    document.getElementById("filter-cat").addEventListener("change", renderHistory);
+  }
+
+  // ---------- ejercicios tab ----------
+  function renderManage(){
+    var wrap = document.getElementById("manage-list");
+    wrap.innerHTML = "";
+    Object.keys(state.exercises).forEach(function(cat){
+      var block = document.createElement("div");
+      block.className = "manage-cat card";
+
+      var head = document.createElement("div");
+      head.className = "manage-cat-head";
+      var dot = document.createElement("span");
+      dot.className = "dot"; dot.style.background = colorFor(cat);
+      var h3 = document.createElement("h3"); h3.textContent = cat;
+      head.appendChild(dot); head.appendChild(h3);
+
+      var list = document.createElement("div");
+      list.className = "ex-list";
+      state.exercises[cat].forEach(function(ex, i){
+        var row = document.createElement("div");
+        row.className = "ex-row";
+
+        var left = document.createElement("div");
+        left.className = "left";
+        var nameEl = document.createElement("div");
+        nameEl.className = "name"; nameEl.textContent = ex.name;
+        var vidEl = document.createElement("div");
+        vidEl.className = "vid-status";
+        if(ex.video){
+          var a = document.createElement("a");
+          a.href = ex.video; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.style.color = "var(--accent)";
+          a.textContent = "▶ Video de referencia";
+          vidEl.appendChild(a);
+        } else {
+          vidEl.textContent = "Sin video de referencia";
+        }
+        left.appendChild(nameEl); left.appendChild(vidEl);
+
+        var actions = document.createElement("div");
+        actions.className = "actions";
+        var vidBtn = document.createElement("button");
+        vidBtn.type = "button"; vidBtn.className = "icon-btn";
+        vidBtn.textContent = ex.video ? "Editar" : "+ Video";
+        vidBtn.addEventListener("click", function(){ promptVideoEdit(cat, ex); });
+        var rm = document.createElement("button");
+        rm.type = "button"; rm.className = "icon-btn"; rm.textContent = "Eliminar";
+        rm.addEventListener("click", function(){
+          state.exercises[cat].splice(i,1);
+          saveData();
+          renderManage();
+          renderCategoryChips();
+        });
+        actions.appendChild(vidBtn); actions.appendChild(rm);
+
+        row.appendChild(left); row.appendChild(actions);
+        list.appendChild(row);
+      });
+
+      var addRow = document.createElement("div");
+      addRow.className = "add-ex-row";
+      var input = document.createElement("input");
+      input.type = "text"; input.placeholder = "Nuevo ejercicio para " + cat;
+      var addBtn = document.createElement("button");
+      addBtn.className = "btn small"; addBtn.textContent = "Añadir";
+      addBtn.addEventListener("click", function(){
+        var v = input.value.trim();
+        if(!v) return;
+        if(!state.exercises[cat].some(function(x){ return x.name === v; })) state.exercises[cat].push({ name: v, video: "" });
+        input.value = "";
+        saveData();
+        renderManage();
+        if(state.selectedCategory === cat) selectCategory(cat);
+      });
+      input.addEventListener("keydown", function(e){ if(e.key === "Enter") addBtn.click(); });
+      addRow.appendChild(input); addRow.appendChild(addBtn);
+
+      block.appendChild(head);
+      block.appendChild(list);
+      block.appendChild(addRow);
+      wrap.appendChild(block);
+    });
+  }
+
+  function initAddCategory(){
+    document.getElementById("add-cat-btn").addEventListener("click", function(){
+      var input = document.getElementById("new-cat-name");
+      var name = input.value.trim();
+      if(!name) return;
+      if(state.exercises[name]){ showToast("Esa categoría ya existe."); return; }
+      state.exercises[name] = [];
+      input.value = "";
+      saveData();
+      renderManage();
+      renderCategoryChips();
+      showToast("Categoría añadida ✓");
+    });
+  }
+
+  // ---------- init ----------
+  function init(){
+    document.getElementById("input-date").value = todayStr();
+    initTabs();
+    initExerciseSelectHandler();
+    initAddSetBtn();
+    initSaveEntryBtn();
+    initHistoryFilter();
+    initAddCategory();
+    document.getElementById("input-date").addEventListener("change", renderTodayList);
+    subscribeData();
+  }
+
+  init();
+})();
+</script>
+
+</body>
+</html>
