@@ -212,6 +212,10 @@
   .add-ex-row{ display:flex; gap:8px; }
   .add-ex-row input{ margin-bottom:0; flex:1; }
 
+  .sub-block{ margin: -4px 0 16px; padding: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+  .sub-block-label{ font-size: 11px; color: var(--text-faint); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 8px; display:block; }
+  .sub-block .chip{ padding: 6px 11px; font-size: 12px; }
+
   ::placeholder{ color: var(--text-faint); }
 </style>
 </head>
@@ -246,6 +250,7 @@
 
     <div class="card" id="exercise-card" style="display:none;">
       <h2 id="exercise-card-title">Ejercicio</h2>
+      <div class="chip-grid" id="registrar-sub-chips" style="margin:-4px 0 14px; display:none;"></div>
       <label for="input-exercise">Ejercicio</label>
       <select id="input-exercise"></select>
 
@@ -339,12 +344,25 @@
     </div>
 
     <div class="card">
+      <h2>Subcategorías</h2>
+      <div class="muted-small">Ej. en Piernas: Glúteos, Femoral, Aductor, Cuádriceps... En Tríceps: Cabeza larga, lateral, medial...</div>
+      <label for="subcat-category">Categoría</label>
+      <select id="subcat-category"></select>
+      <div class="add-ex-row">
+        <input type="text" id="new-subcat-name" placeholder="Nombre de la subcategoría">
+        <button class="btn primary" id="add-subcat-btn" type="button">Añadir</button>
+      </div>
+      <div id="subcat-list" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
       <h2 id="ex-form-title">Nuevo ejercicio</h2>
       <label for="ex-form-name">Nombre</label>
       <input type="text" id="ex-form-name" placeholder="Ej. Press de banca">
 
       <label>¿Para qué músculos sirve? (elige una o varias)</label>
       <div class="chip-grid" id="ex-form-muscles"></div>
+      <div id="ex-form-subs"></div>
 
       <div style="height:6px;"></div>
       <label for="ex-form-media">Enlace de video o foto (opcional)</label>
@@ -363,6 +381,7 @@
     <div class="card">
       <h2>Tu biblioteca de ejercicios</h2>
       <div class="chip-grid" id="ex-filter-chips" style="margin-bottom:14px;"></div>
+      <div class="chip-grid" id="ex-filter-sub-chips" style="margin-bottom:14px; display:none;"></div>
       <div id="ex-library-list"></div>
     </div>
 
@@ -459,17 +478,25 @@
 
   var state = {
     categories: DEFAULT_CATEGORIES.slice(),
-    library: [],        // [{id,name,muscles:[...],media,notes}]
+    subcategories: {},   // { category: [subName, ...] }
+    library: [],        // [{id,name,muscles:["Cat" or "Cat:Sub",...],media,notes}]
     log: [],             // [{id,date,category,exercise,sets:[{peso,reps} or {minutes}]}]
     selectedCategory: null,
+    selectedSub: null,
     currentSets: [{peso:"", reps:""}],
     activeTab: "registrar",
     openDay: null,
     ready: false,
     editingExerciseId: null,
     exFormMuscles: [],
-    exFilter: ""
+    exFormSubs: {},
+    exFilter: "",
+    exFilterSub: ""
   };
+
+  function baseCategory(tag){ return tag.split(":")[0]; }
+  function subOf(tag){ var i = tag.indexOf(":"); return i === -1 ? null : tag.slice(i+1); }
+  function tagLabel(tag){ var b = baseCategory(tag), s = subOf(tag); return s ? (b + " · " + s) : b; }
 
   function colorFor(cat){
     if(CAT_COLORS[cat]) return CAT_COLORS[cat];
@@ -583,8 +610,15 @@
     return state.library.find(function(ex){ return ex.name === name; });
   }
 
-  function libraryByCategory(cat){
-    return state.library.filter(function(ex){ return ex.muscles.indexOf(cat) !== -1; });
+  function libraryByCategory(cat, sub){
+    return state.library.filter(function(ex){
+      return ex.muscles.some(function(m){
+        if(baseCategory(m) !== cat) return false;
+        if(!sub) return true;
+        var s = subOf(m);
+        return s === null || s === sub;
+      });
+    });
   }
 
   // ---------- persistence (Firestore, real-time sync) ----------
@@ -612,12 +646,14 @@
             state.library = DEFAULT_LIBRARY.map(function(e){ return normalizeLibraryItem({ name: e.name, muscles: e.muscles.slice() }); });
           }
         }
+        state.subcategories = (data.subcategories && typeof data.subcategories === "object") ? data.subcategories : {};
         state.log = data.log || [];
       } else {
         state.library = DEFAULT_LIBRARY.map(function(e){ return normalizeLibraryItem({ name: e.name, muscles: e.muscles.slice() }); });
         state.categories = DEFAULT_CATEGORIES.slice();
+        state.subcategories = {};
         state.log = [];
-        setDoc(workoutDocRef, { library: state.library, categories: state.categories, log: state.log }).catch(function(){});
+        setDoc(workoutDocRef, { library: state.library, categories: state.categories, subcategories: state.subcategories, log: state.log }).catch(function(){});
       }
       updateSyncStatus("ok", "Sincronizado");
       state.ready = true;
@@ -630,7 +666,7 @@
 
   async function saveData(){
     try{
-      await setDoc(workoutDocRef, { library: state.library, categories: state.categories, log: state.log });
+      await setDoc(workoutDocRef, { library: state.library, categories: state.categories, subcategories: state.subcategories, log: state.log });
     }catch(e){
       updateSyncStatus("err", "Error al guardar");
       showToast("No se pudo guardar. Revisa tu conexión.");
@@ -675,13 +711,52 @@
 
   function selectCategory(cat){
     state.selectedCategory = cat;
+    state.selectedSub = null;
     state.currentSets = [blankSet(cat)];
     renderCategoryChips();
     var card = document.getElementById("exercise-card");
     card.style.display = "block";
     document.getElementById("exercise-card-title").textContent = cat;
+    renderSubFilterRegistrar(cat);
     populateExerciseSelect(cat);
     renderSetsTable();
+  }
+
+  function renderSubFilterRegistrar(cat){
+    var wrap = document.getElementById("registrar-sub-chips");
+    var subs = state.subcategories[cat] || [];
+    if(subs.length === 0){
+      wrap.style.display = "none";
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.style.display = "flex";
+    wrap.innerHTML = "";
+
+    var allChip = document.createElement("button");
+    allChip.type = "button";
+    allChip.className = "chip" + (!state.selectedSub ? " selected" : "");
+    allChip.textContent = "Todas";
+    allChip.addEventListener("click", function(){
+      state.selectedSub = null;
+      renderSubFilterRegistrar(cat);
+      populateExerciseSelect(cat);
+    });
+    wrap.appendChild(allChip);
+
+    subs.forEach(function(sub){
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip" + (state.selectedSub === sub ? " selected" : "");
+      chip.style.setProperty("--chip-color", colorFor(cat));
+      chip.textContent = sub;
+      chip.addEventListener("click", function(){
+        state.selectedSub = sub;
+        renderSubFilterRegistrar(cat);
+        populateExerciseSelect(cat);
+      });
+      wrap.appendChild(chip);
+    });
   }
 
   function populateExerciseSelect(cat, preserveValue){
@@ -689,7 +764,8 @@
     if(!sel) return;
     var prevValue = preserveValue !== undefined ? preserveValue : sel.value;
     sel.innerHTML = "";
-    libraryByCategory(cat).forEach(function(ex){
+    var list = libraryByCategory(cat, state.selectedSub);
+    list.forEach(function(ex){
       var o = document.createElement("option");
       o.value = ex.name; o.textContent = ex.name;
       sel.appendChild(o);
@@ -698,7 +774,7 @@
     custom.value = "__custom__";
     custom.textContent = "+ Otro ejercicio...";
     sel.appendChild(custom);
-    var names = libraryByCategory(cat).map(function(e){ return e.name; });
+    var names = list.map(function(e){ return e.name; });
     if(names.indexOf(prevValue) !== -1) sel.value = prevValue;
     renderExerciseMedia(sel.value);
     renderExerciseNotesHint(sel.value);
@@ -900,11 +976,12 @@
         var name = prompt("Nombre del nuevo ejercicio:");
         if(name && name.trim()){
           name = name.trim();
+          var tag = state.selectedSub ? (state.selectedCategory + ":" + state.selectedSub) : state.selectedCategory;
           var existing = findExerciseByName(name);
           if(!existing){
-            state.library.push(normalizeLibraryItem({ name: name, muscles: [state.selectedCategory] }));
-          } else if(existing.muscles.indexOf(state.selectedCategory) === -1){
-            existing.muscles.push(state.selectedCategory);
+            state.library.push(normalizeLibraryItem({ name: name, muscles: [tag] }));
+          } else if(existing.muscles.indexOf(tag) === -1){
+            existing.muscles.push(tag);
           }
           saveData();
           populateExerciseSelect(state.selectedCategory, name);
@@ -1297,16 +1374,53 @@
       chip.appendChild(document.createTextNode(cat));
       chip.addEventListener("click", function(){
         var i = state.exFormMuscles.indexOf(cat);
-        if(i === -1) state.exFormMuscles.push(cat); else state.exFormMuscles.splice(i,1);
+        if(i === -1){ state.exFormMuscles.push(cat); }
+        else { state.exFormMuscles.splice(i,1); delete state.exFormSubs[cat]; }
         renderExerciseFormMuscles();
       });
       wrap.appendChild(chip);
+    });
+    renderExerciseFormSubs();
+  }
+
+  function renderExerciseFormSubs(){
+    var wrap = document.getElementById("ex-form-subs");
+    wrap.innerHTML = "";
+    state.exFormMuscles.forEach(function(cat){
+      var subs = state.subcategories[cat] || [];
+      if(subs.length === 0) return;
+      var block = document.createElement("div");
+      block.className = "sub-block";
+      var label = document.createElement("span");
+      label.className = "sub-block-label";
+      label.textContent = "Subcategoría en " + cat + " (opcional)";
+      block.appendChild(label);
+      var grid = document.createElement("div");
+      grid.className = "chip-grid";
+      subs.forEach(function(sub){
+        var chip = document.createElement("button");
+        chip.type = "button";
+        var selected = (state.exFormSubs[cat] || []).indexOf(sub) !== -1;
+        chip.className = "chip" + (selected ? " selected" : "");
+        chip.style.setProperty("--chip-color", colorFor(cat));
+        chip.textContent = sub;
+        chip.addEventListener("click", function(){
+          if(!state.exFormSubs[cat]) state.exFormSubs[cat] = [];
+          var i = state.exFormSubs[cat].indexOf(sub);
+          if(i === -1) state.exFormSubs[cat].push(sub); else state.exFormSubs[cat].splice(i,1);
+          renderExerciseFormSubs();
+        });
+        grid.appendChild(chip);
+      });
+      block.appendChild(grid);
+      wrap.appendChild(block);
     });
   }
 
   function resetExerciseForm(){
     state.editingExerciseId = null;
     state.exFormMuscles = [];
+    state.exFormSubs = {};
     document.getElementById("ex-form-title").textContent = "Nuevo ejercicio";
     document.getElementById("ex-form-name").value = "";
     document.getElementById("ex-form-media").value = "";
@@ -1317,7 +1431,18 @@
 
   function loadExerciseIntoForm(ex){
     state.editingExerciseId = ex.id;
-    state.exFormMuscles = ex.muscles.slice();
+    var baseCats = [];
+    var subsByCat = {};
+    ex.muscles.forEach(function(m){
+      var b = baseCategory(m), s = subOf(m);
+      if(baseCats.indexOf(b) === -1) baseCats.push(b);
+      if(s){
+        if(!subsByCat[b]) subsByCat[b] = [];
+        if(subsByCat[b].indexOf(s) === -1) subsByCat[b].push(s);
+      }
+    });
+    state.exFormMuscles = baseCats;
+    state.exFormSubs = subsByCat;
     document.getElementById("ex-form-title").textContent = "Editar ejercicio";
     document.getElementById("ex-form-name").value = ex.name;
     document.getElementById("ex-form-media").value = ex.media || "";
@@ -1325,6 +1450,19 @@
     document.getElementById("ex-form-cancel").style.display = "inline-flex";
     renderExerciseFormMuscles();
     document.getElementById("ex-form-name").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function buildTagsFromForm(){
+    var tags = [];
+    state.exFormMuscles.forEach(function(cat){
+      var subs = state.exFormSubs[cat] || [];
+      if(subs.length === 0){
+        tags.push(cat);
+      } else {
+        subs.forEach(function(s){ tags.push(cat + ":" + s); });
+      }
+    });
+    return tags;
   }
 
   function initExerciseForm(){
@@ -1336,15 +1474,17 @@
       if(state.exFormMuscles.length === 0){ showToast("Elige al menos un músculo."); return; }
       if(media && !/^https?:\/\//i.test(media)){ showToast("El enlace debe empezar con http:// o https://"); return; }
 
+      var tags = buildTagsFromForm();
+
       if(state.editingExerciseId){
         var ex = state.library.find(function(e){ return e.id === state.editingExerciseId; });
         if(ex){
-          ex.name = name; ex.muscles = state.exFormMuscles.slice(); ex.media = media; ex.notes = notes;
+          ex.name = name; ex.muscles = tags; ex.media = media; ex.notes = notes;
         }
       } else {
         var dup = findExerciseByName(name);
         if(dup){ showToast("Ya existe un ejercicio con ese nombre."); return; }
-        state.library.push({ id: uid(), name: name, muscles: state.exFormMuscles.slice(), media: media, notes: notes });
+        state.library.push({ id: uid(), name: name, muscles: tags, media: media, notes: notes });
       }
       saveData();
       resetExerciseForm();
@@ -1364,7 +1504,7 @@
     all.type = "button";
     all.className = "chip" + (state.exFilter === "" ? " selected" : "");
     all.textContent = "Todas";
-    all.addEventListener("click", function(){ state.exFilter = ""; renderExerciseManager(); });
+    all.addEventListener("click", function(){ state.exFilter = ""; state.exFilterSub = ""; renderExerciseManager(); });
     wrap.appendChild(all);
 
     state.categories.forEach(function(cat){
@@ -1376,7 +1516,38 @@
       dot.className = "dot"; dot.style.background = colorFor(cat);
       chip.appendChild(dot);
       chip.appendChild(document.createTextNode(cat));
-      chip.addEventListener("click", function(){ state.exFilter = cat; renderExerciseManager(); });
+      chip.addEventListener("click", function(){ state.exFilter = cat; state.exFilterSub = ""; renderExerciseManager(); });
+      wrap.appendChild(chip);
+    });
+
+    renderExerciseFilterSubChips();
+  }
+
+  function renderExerciseFilterSubChips(){
+    var wrap = document.getElementById("ex-filter-sub-chips");
+    var subs = state.exFilter ? (state.subcategories[state.exFilter] || []) : [];
+    if(!state.exFilter || subs.length === 0){
+      wrap.style.display = "none";
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.style.display = "flex";
+    wrap.innerHTML = "";
+
+    var all = document.createElement("button");
+    all.type = "button";
+    all.className = "chip" + (!state.exFilterSub ? " selected" : "");
+    all.textContent = "Todas en " + state.exFilter;
+    all.addEventListener("click", function(){ state.exFilterSub = ""; renderExerciseFilterSubChips(); renderExerciseLibraryList(); });
+    wrap.appendChild(all);
+
+    subs.forEach(function(sub){
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip" + (state.exFilterSub === sub ? " selected" : "");
+      chip.style.setProperty("--chip-color", colorFor(state.exFilter));
+      chip.textContent = sub;
+      chip.addEventListener("click", function(){ state.exFilterSub = sub; renderExerciseFilterSubChips(); renderExerciseLibraryList(); });
       wrap.appendChild(chip);
     });
   }
@@ -1384,9 +1555,15 @@
   function renderExerciseLibraryList(){
     var wrap = document.getElementById("ex-library-list");
     wrap.innerHTML = "";
-    var list = state.exFilter
-      ? state.library.filter(function(ex){ return ex.muscles.indexOf(state.exFilter) !== -1; })
-      : state.library.slice();
+    var list = state.library.filter(function(ex){
+      return ex.muscles.some(function(m){
+        if(!state.exFilter) return true;
+        if(baseCategory(m) !== state.exFilter) return false;
+        if(!state.exFilterSub) return true;
+        var s = subOf(m);
+        return s === null || s === state.exFilterSub;
+      });
+    });
 
     if(list.length === 0){
       wrap.innerHTML = '<div class="empty">No hay ejercicios en esta categoría todavía.</div>';
@@ -1409,9 +1586,9 @@
         var tag = document.createElement("span");
         tag.className = "tag-chip";
         var dot = document.createElement("span");
-        dot.className = "dot"; dot.style.background = colorFor(m);
+        dot.className = "dot"; dot.style.background = colorFor(baseCategory(m));
         tag.appendChild(dot);
-        tag.appendChild(document.createTextNode(m));
+        tag.appendChild(document.createTextNode(tagLabel(m)));
         tagsWrap.appendChild(tag);
       });
       left.appendChild(tagsWrap);
@@ -1449,7 +1626,78 @@
     });
   }
 
+  function populateSubcatCategorySelect(){
+    var sel = document.getElementById("subcat-category");
+    var prev = sel.value;
+    sel.innerHTML = "";
+    state.categories.forEach(function(cat){
+      var o = document.createElement("option");
+      o.value = cat; o.textContent = cat;
+      sel.appendChild(o);
+    });
+    if(state.categories.indexOf(prev) !== -1) sel.value = prev;
+  }
+
+  function renderSubcatList(){
+    var wrap = document.getElementById("subcat-list");
+    var cat = document.getElementById("subcat-category").value;
+    var subs = state.subcategories[cat] || [];
+    wrap.innerHTML = "";
+    if(!cat) return;
+    if(subs.length === 0){
+      wrap.innerHTML = '<div class="empty">Sin subcategorías en ' + cat + ' todavía.</div>';
+      return;
+    }
+    var grid = document.createElement("div");
+    grid.className = "chip-grid";
+    subs.forEach(function(sub, i){
+      var tag = document.createElement("span");
+      tag.className = "tag-chip";
+      var dot = document.createElement("span");
+      dot.className = "dot"; dot.style.background = colorFor(cat);
+      tag.appendChild(dot);
+      tag.appendChild(document.createTextNode(sub));
+      var rm = document.createElement("button");
+      rm.type = "button"; rm.textContent = "×";
+      rm.style.cssText = "background:none;border:none;color:var(--text-faint);cursor:pointer;margin-left:4px;font-size:13px;";
+      rm.addEventListener("click", function(){
+        state.subcategories[cat].splice(i,1);
+        saveData();
+        renderSubcatList();
+        renderExerciseFormMuscles();
+        renderExerciseFilterChips();
+        if(state.selectedCategory === cat) renderSubFilterRegistrar(cat);
+      });
+      tag.appendChild(rm);
+      grid.appendChild(tag);
+    });
+    wrap.appendChild(grid);
+  }
+
+  function initSubcatManager(){
+    populateSubcatCategorySelect();
+    renderSubcatList();
+    document.getElementById("subcat-category").addEventListener("change", renderSubcatList);
+    document.getElementById("add-subcat-btn").addEventListener("click", function(){
+      var cat = document.getElementById("subcat-category").value;
+      var name = document.getElementById("new-subcat-name").value.trim();
+      if(!cat || !name) return;
+      if(!state.subcategories[cat]) state.subcategories[cat] = [];
+      if(state.subcategories[cat].indexOf(name) !== -1){ showToast("Ya existe esa subcategoría."); return; }
+      state.subcategories[cat].push(name);
+      document.getElementById("new-subcat-name").value = "";
+      saveData();
+      renderSubcatList();
+      renderExerciseFormMuscles();
+      renderExerciseFilterChips();
+      if(state.selectedCategory === cat) renderSubFilterRegistrar(cat);
+      showToast("Subcategoría añadida ✓");
+    });
+  }
+
   function renderExerciseManager(){
+    populateSubcatCategorySelect();
+    renderSubcatList();
     renderExerciseFilterChips();
     renderExerciseLibraryList();
     if(document.getElementById("ex-form-muscles").children.length === 0) renderExerciseFormMuscles();
@@ -1507,6 +1755,7 @@
     initHistoryFilter();
     initAddCategory();
     initExerciseForm();
+    initSubcatManager();
     initProgressSelect();
     initImportBtn();
     renderExerciseFormMuscles();
